@@ -241,14 +241,30 @@ class Blackjack():
         return
     
 
-    def train(self, epochs, alpha = 0.1):
+    def train(self, epochs, alpha = 0.1, track_state = None):
         """Trains the bot using monte carlo control. Will train for epochs, with a learning rate alpha."""
         
         reward_history = []
         
+        # Validate tracked state
+        if track_state:
+            if len(track_state) != 4:
+                raise ValueError("Tracked state must be tuple of action, hand_sum, dealer_card, playable_ace")
+            if track_state[0] not in ["stick", "hit"]:
+                raise ValueError("Tracked action must be stick or hit")
+            if track_state[1] not in [12,13,14,15,16,17,18,19,20]:
+                raise ValueError("Tracked hand_sum must be 12, 13, 14, 15, 16, 17, 18, 19, or 20")
+            if track_state[2] not in ["A",2,3,4,5,6,7,8,9,10]:
+                raise ValueError("Tracked dealer_card must be 'A', 2, 3, 4, 5, 6, 7, 8, 9, or 10")
+            if track_state[3] not in [True, False]:
+                raise ValueError("Tracked playable_ace must be True or False")
+            tracked_state_q_value_history = []
+        
         for i in range(epochs):
             # Simulates a hand
             reward, states = self.play()
+            
+            # Save reward to reward history
             reward_history.append(reward)
             
             # Loops over all state / action pairs in hand and updates q values 
@@ -262,8 +278,16 @@ class Blackjack():
                 old_q_value = self.get_q_value(action, hand_sum, dealer_card, playable_ace)
                 new_q_value = old_q_value + alpha * (reward - old_q_value)
                 self.set_q_value(action, hand_sum, dealer_card, playable_ace, new_q_value)
+
+                # Save q value history for tracked state
+                if track_state:
+                    tracked_state_q_value_history.append(self.get_q_value(track_state[0],track_state[1],track_state[2],track_state[3]))
         
-        return reward_history
+        if track_state:
+            return reward_history, tracked_state_q_value_history
+        
+        else:
+            return reward_history
     
 
     def moving_average_reward(self, reward_history, n):
