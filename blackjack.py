@@ -14,7 +14,7 @@ class Blackjack():
         # Q table enumerations
         self.hand_sum = [12,13,14,15,16,17,18,19,20]
         self.dealer_card = ["A",2,3,4,5,6,7,8,9,10]
-        self.usable_ace = [True, False]
+        self.playable_ace = [True, False]
         self.actions = ["stick","hit"]
 
         # Map for compressing dealer card
@@ -71,7 +71,7 @@ class Blackjack():
         }
 
         # Q table
-        self.q_table = np.zeros((len(self.actions),len(self.hand_sum),len(self.dealer_card),len(self.usable_ace)))
+        self.q_table = np.zeros((len(self.actions),len(self.hand_sum),len(self.dealer_card),len(self.playable_ace)))
 
 
     def draw(self, n):
