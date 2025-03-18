@@ -1,5 +1,6 @@
 import random
 import numpy as np
+import statistics
 
 class Blackjack():
 
@@ -83,47 +84,66 @@ class Blackjack():
 
 
     def play(self, human_user = False):
-        """Play a hand of blackjack. Returns 1 for a win and 0 for a loss"""
+        """Play a hand of blackjack. Returns a tuple of (reward, state history). Reward is 1 for a win, 0 for a draw, -1 for a loss"""
         player_cards = self.draw(2)
         dealer_cards = self.draw(1)
-        for card in player_cards:
-            print(f"You drew {card}")
-        print(f"Dealer card is {dealer_cards[0]}")
+        if human_user:
+            for card in player_cards:
+                print(f"You drew {card}")
+            print(f"Dealer card is {dealer_cards[0]}")
 
-        player_hand_sum, playable_ace = self.check_hand(player_cards)
-        print(f"Hand sum is {player_hand_sum}")
+        player_hand_sum, player_playable_ace = self.check_hand(player_cards)
+        if human_user:
+            print(f"Hand sum is {player_hand_sum}")
+
+        # Automatically draw another card if hand_sum is <12 (cannot bust)
+        while player_hand_sum < 12:
+            card = self.draw(1)
+            player_cards = player_cards + card
+            player_hand_sum, player_playable_ace = self.check_hand(player_cards)
+            if human_user:
+                print(f"You drew {card[0]}. Hand sum is {player_hand_sum}")
+        
+        # Check for immediate blackjack
+        if player_hand_sum == 21:
+            if human_user:
+                print("Lucky blackjack!")
+            return 1, []
         
         # Play player
         state_history = []
-        inp = None
-        while not inp == "stick":
+        action = None
+        while not action == "stick":
             # Get player input if human user
             if human_user:
-                inp = input("stick or hit?")
+                action = input("stick or hit?")
             # Use epsilon greedy policy to select action 
             else:
-                inp = self.get_action(player_hand_sum, self.dealer_card_conversion[dealer_cards[0]], playable_ace)
+                action = self.get_action(player_hand_sum, self.dealer_card_conversion[dealer_cards[0]], player_playable_ace)
             
             # Save state / action pair to history
-            if inp in ["stick", "hit"]:
-                state_history.append((inp, player_hand_sum, self.dealer_card_conversion[dealer_cards[0], player_playable_ace]))
+            if action in ["stick", "hit"]:
+                state_history.append((action, player_hand_sum, self.dealer_card_conversion[dealer_cards[0]], player_playable_ace))
 
-            if inp == "h":
+            if action == "hit":
                 # Draw a card
                 card = self.draw(1)
                 player_cards = player_cards + card
                 player_hand_sum, player_playable_ace = self.check_hand(player_cards)
-                print(f"You drew {card[0]}. Hand sum is {player_hand_sum}")
+                if human_user:
+                    print(f"You drew {card[0]}. Hand sum is {player_hand_sum}")
 
                 # Check for player_bust
                 if player_hand_sum > 21:
-                    print("You bust!")
-                    return -1
+                    if human_user:
+                        print("You bust!")
+                    return -1, state_history
 
                 # Check for blackjack
                 if player_hand_sum == 21:
-                    print("Blackjack!")
-                    return 1
+                    if human_user:
+                        print("Blackjack!")
+                    return 1, state_history
 
         # Play dealer
         while True:
@@ -131,30 +151,35 @@ class Blackjack():
             card = self.draw(1)
             dealer_cards = dealer_cards + card
             dealer_hand_sum, _ = self.check_hand(dealer_cards)
-            print(f"Dealer drew {card[0]}. Hand sum is {dealer_hand_sum}")
+            if human_user:
+                print(f"Dealer drew {card[0]}. Hand sum is {dealer_hand_sum}")
             
             # Win / loss / draw checks
             if dealer_hand_sum >= 17:
 
                 # Check for dealer bust
                 if dealer_hand_sum > 21:
-                    print("Dealer bust. You win!")
-                    return 1
+                    if human_user:
+                        print("Dealer bust. You win!")
+                    return 1, state_history
             
                 # Check for dealer win
                 if dealer_hand_sum > player_hand_sum:
-                    print("Dealer won!")
-                    return -1
+                    if human_user:
+                        print("Dealer won!")
+                    return -1, state_history
                 
                 # Check for draw
                 if dealer_hand_sum == player_hand_sum:
-                    print("Draw!")
-                    return 0
+                    if human_user:
+                        print("Draw!")
+                    return 0, state_history
                 
                 # Check for player win
                 if dealer_hand_sum < player_hand_sum:
-                    print(f"Dealer sticks on {dealer_hand_sum}. You win!")
-                    return 1
+                    if human_user:
+                        print(f"Dealer sticks on {dealer_hand_sum}. You win!")
+                    return 1, state_history
 
 
     def check_hand(self, card_list):
@@ -184,11 +209,26 @@ class Blackjack():
 
         return hand_sum, playable_ace
 
+
     def get_action(self, hand_sum, dealer_card, playble_ace):
         """Epsilon greedy action selection"""
-        stick_value = self.get_q_value("stick", hand_sum, dealer_card, playble_ace)
+        # Check for epsilon random action
+        random_number = random.random()
+        if random_number <= self.epsilon:
+            return random.choice(["stick","hit"])
+        
+        stick_q_value = self.get_q_value("stick", hand_sum, dealer_card, playble_ace)
+        hit_q_value = self.get_q_value("hit", hand_sum, dealer_card, playble_ace)
+        
+        if stick_q_value > hit_q_value:
+            return "stick"
+        
+        elif hit_q_value > stick_q_value:
+            return "hit"
+        
+        else:
+            return random.choice(["stick","hit"])
 
-        return
 
     def get_q_value(self, action, hand_sum, dealer_card, playable_ace):
         """Returns a Q value for a given state / action pair"""
@@ -201,8 +241,34 @@ class Blackjack():
         return
     
 
-    def train(self, epochs):
-        return
+    def train(self, epochs, alpha = 0.1):
+        """Trains the bot using monte carlo control. Will train for epochs, with a learning rate alpha."""
+        
+        reward_history = []
+        
+        for i in range(epochs):
+            # Simulates a hand
+            reward, states = self.play()
+            reward_history.append(reward)
+            
+            # Loops over all state / action pairs in hand and updates q values 
+            for state in states:
+                action = state[0]
+                hand_sum = state[1]
+                dealer_card = state[2]
+                playable_ace = state[3]
+                
+                # Applies monte carlo control update rule
+                old_q_value = self.get_q_value(action, hand_sum, dealer_card, playable_ace)
+                new_q_value = old_q_value + alpha * (reward - old_q_value)
+                self.set_q_value(action, hand_sum, dealer_card, playable_ace, new_q_value)
+        
+        return reward_history
+    
+
+    def moving_average_reward(self, reward_history, n):
+        """Converts training reward history to a rolling reward over n hands"""
+        return np.convolve(reward_history, np.ones(n), 'valid') / n
 
 
 
